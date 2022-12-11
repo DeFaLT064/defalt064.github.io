@@ -1,5 +1,6 @@
 ---
 title: Hack the world!
+layout: post
 ---
 
 ### About me
